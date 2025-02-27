@@ -13,10 +13,12 @@ import {
 import PersonIcon from '@mui/icons-material/Person';
 import LockIcon from '@mui/icons-material/Lock';
 import { API_URL } from '../services/api';
+import LoaderOverlay from '../components/LoaderOverlay'; // Importa el componente LoaderOverlay
 
 function Login() {
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false); // Estado para la pantalla de carga
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -26,6 +28,7 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setIsLoading(true); // Mostrar pantalla de carga
     try {
       // Petición al endpoint de login usando la constante API_URL
       const response = await fetch(`${API_URL}/Auth/login`, {
@@ -79,6 +82,8 @@ function Login() {
       }
     } catch (error) {
       setErrorMsg('Credenciales inválidas o error en el servidor.');
+    } finally {
+      setIsLoading(false); // Ocultar pantalla de carga
     }
   };
 
@@ -91,6 +96,8 @@ function Login() {
         padding: 0,
       }}
     >
+      {isLoading && <LoaderOverlay />} {/* Mostrar LoaderOverlay si isLoading es true */}
+
       {/* Columna Izquierda */}
       <Box
         sx={{

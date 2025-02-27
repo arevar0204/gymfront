@@ -90,11 +90,6 @@ function Register() {
     try {
       setIsLoading(true);
 
-      const token = localStorage.getItem('token'); // Ajusta según tu lógica
-      if (!token) {
-        throw new Error('No hay token. Debes iniciar sesión primero.');
-      }
-
       // Construimos el FormData
       const data = new FormData();
       data.append('Email', formData.email);
@@ -112,13 +107,9 @@ function Register() {
         data.append('ProfileImage', profileImage);
       }
 
-      // Petición multipart/form-data con Bearer token
+      // Petición multipart/form-data sin Bearer token
       const response = await fetch(`${API_URL}/Auth/register`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          // NO establecer "Content-Type": fetch la genera con FormData
-        },
         body: data,
       });
 
