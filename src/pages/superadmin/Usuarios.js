@@ -13,13 +13,15 @@ import {
   Paper,
 } from "@mui/material";
 import { API_URL } from "../../services/api"; // Ajusta tu import
+import LoaderOverlay from "../../components/LoaderOverlay"; // Importa el componente LoaderOverlay
 
 function HikvisionEvents() {
   const [sseStatus, setSseStatus] = useState("Conectando SSE...");
   const [latestEvent, setLatestEvent] = useState(null); // Evento actual en la tarjeta
   const [historyEvents, setHistoryEvents] = useState([]); // Array de eventos (máx 30)
+  const [isLoading, setIsLoading] = useState(true); // Estado para la pantalla de carga
 
-  // Referencia para almacenar un posible timeout (si llega otro evento antes de 1s)
+  // Referencia para almacenar un posible timeout (si llega otro evento antes de 3s)
   const timeoutRef = useRef(null);
 
   useEffect(() => {
@@ -27,11 +29,15 @@ function HikvisionEvents() {
 
     es.onopen = () => {
       setSseStatus("Conexión SSE establecida");
+      setTimeout(() => {
+        setIsLoading(false); // Ocultar pantalla de carga después de 3 segundos
+      }, 3000);
     };
 
     es.onerror = (err) => {
       console.error("Error SSE:", err);
       setSseStatus("Error SSE (ver consola)");
+      setIsLoading(false); // Ocultar pantalla de carga en caso de error
     };
 
     es.onmessage = (e) => {
@@ -66,7 +72,7 @@ function HikvisionEvents() {
           // Asignar este evento a la tarjeta
           setLatestEvent(eventObj);
 
-          // Después de 1 segundo, moverlo al historial
+          // Después de 3 segundos, moverlo al historial
           timeoutRef.current = setTimeout(() => {
             setHistoryEvents((prev) => {
               const newArr = [eventObj, ...prev];
@@ -75,7 +81,7 @@ function HikvisionEvents() {
               return newArr;
             });
             setLatestEvent(null); // limpiar la tarjeta
-          }, 1000);
+          }, 3000);
         }
       } catch (ex) {
         console.warn("No se pudo parsear SSE data:", ex);
@@ -124,23 +130,19 @@ function HikvisionEvents() {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" color="primary" gutterBottom>
-        Eventos Hikvision
-      </Typography>
-      <Typography variant="body2" sx={{ mb: 2 }}>
-        Estado SSE: {sseStatus}
-      </Typography>
+    <Box sx={{ p: 3, display: "flex", flexDirection: "row" }}>
+      {isLoading && <LoaderOverlay />} {/* Mostrar LoaderOverlay si isLoading es true */}
 
-      {/* Tarjeta siempre visible */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          mb: 4,
-        }}
-      >
-        <Card sx={{ width: 600 }}>
+      {/* Columna Izquierda: Tarjeta de Evento */}
+      <Box sx={{ flex: 1, mr: 2 }}>
+        <Typography variant="h4" color="primary" gutterBottom>
+          Eventos Hikvision
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 2 }}>
+          Estado SSE: {sseStatus}
+        </Typography>
+
+        <Card sx={{ width: "100%", mb: 4 }}>
           {latestEvent ? (
             <TarjetaEvento
               evento={latestEvent}
@@ -163,61 +165,75 @@ function HikvisionEvents() {
         </Card>
       </Box>
 
-      {/* Historial (tabla) */}
-      {historyEvents.length > 0 && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h5" gutterBottom>
-            Historial de Eventos (máx 30)
-          </Typography>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Fecha</TableCell>
-                <TableCell>Hora</TableCell>
-                <TableCell>Empleado</TableCell>
-                <TableCell>Puerta</TableCell>
-                <TableCell>Máscara</TableCell>
-                <TableCell>Foto</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {historyEvents.map((evt, idx) => {
-                const alert = evt.EventNotificationAlert;
-                const ace = alert.AccessControllerEvent;
-                const { fecha, hora } = formatearFechaHora(alert.dateTime);
-                const empNo = ace.employeeNo;
-                const doorNo = ace.doorNo || "?";
-                const mask = ace.mask || "desconocido";
-                const pictureURL = ace.pictureURL
-                  ? `${API_URL}/hikvision/pic-proxy?path=${encodeURIComponent(
-                      ace.pictureURL
-                    )}`
-                  : null;
+      {/* Columna Derecha: Historial de Eventos */}
+      <Box sx={{ flex: 2 }}>
+        {historyEvents.length > 0 && (
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h5" gutterBottom>
+              Historial de Eventos (máx 30)
+            </Typography>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Fecha</TableCell>
+                  <TableCell>Hora</TableCell>
+                  <TableCell>Empleado</TableCell>
+                  <TableCell>Puerta</TableCell>
+                  <TableCell>Máscara</TableCell>
+                  <TableCell>Foto</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {historyEvents.map((evt, idx) => {
+                  const alert = evt.EventNotificationAlert;
+                  const ace = alert.AccessControllerEvent;
+                  const { fecha, hora } = formatearFechaHora(alert.dateTime);
+                  const empNo = ace.employeeNo;
+                  const doorNo = ace.doorNo || "?";
+                  const mask = ace.mask || "desconocido";
+                  const pictureURL = ace.pictureURL
+                    ? `${API_URL}/hikvision/pic-proxy?path=${encodeURIComponent(
+                        ace.pictureURL
+                      )}`
+                    : null;
 
-                return (
-                  <TableRow key={idx}>
-                    <TableCell>{fecha}</TableCell>
-                    <TableCell>{hora}</TableCell>
-                    <TableCell>{empNo}</TableCell>
-                    <TableCell>{doorNo}</TableCell>
-                    <TableCell>{mask}</TableCell>
-                    <TableCell>
-                      {pictureURL && (
-                        <img
-                          src={pictureURL}
-                          alt="Foto Acceso"
-                          width={60}
-                          style={{ borderRadius: "4px" }}
-                        />
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Paper>
-      )}
+                  return (
+                    <TableRow key={idx}>
+                      <TableCell>{fecha}</TableCell>
+                      <TableCell>{hora}</TableCell>
+                      <TableCell>{empNo}</TableCell>
+                      <TableCell>{doorNo}</TableCell>
+                      <TableCell>{mask}</TableCell>
+                      <TableCell>
+                        {pictureURL && (
+                          <Box
+                            sx={{
+                              width: 60,
+                              height: 60,
+                              overflow: "hidden",
+                              borderRadius: "4px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              backgroundColor: "#f0f0f0",
+                            }}
+                          >
+                            <img
+                              src={pictureURL}
+                              alt="Foto Acceso"
+                              style={{ width: "100%", height: "auto" }}
+                            />
+                          </Box>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Paper>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -257,12 +273,25 @@ function TarjetaEvento({ evento, formatearFechaHora }) {
 
       {/* Foto a la derecha */}
       {pictureURL && (
-        <CardMedia
-          component="img"
-          sx={{ width: 180 }}
-          image={pictureURL}
-          alt="Foto Acceso"
-        />
+        <Box
+          sx={{
+            width: 180,
+            height: 180,
+            overflow: "hidden",
+            borderRadius: "4px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#f0f0f0",
+          }}
+        >
+          <CardMedia
+            component="img"
+            sx={{ width: "100%", height: "auto" }}
+            image={pictureURL}
+            alt="Foto Acceso"
+          />
+        </Box>
       )}
     </Box>
   );
