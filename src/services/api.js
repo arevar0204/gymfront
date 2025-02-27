@@ -1,6 +1,6 @@
 // /src/services/api.js
 
-export const API_URL = "https://localhost:7113/api";
+export const API_URL = "https://gymsmart.azurewebsites.net/api";
 
 // Evita que múltiples peticiones hagan refresh simultáneamente
 let isRefreshing = false;
