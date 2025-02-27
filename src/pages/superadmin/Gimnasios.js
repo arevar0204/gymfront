@@ -39,7 +39,7 @@ function Gimnasios() {
       const token = localStorage.getItem("token");
       if (!token) return navigate("/login");
 
-      const response = await fetch(`${API_URL}/api/Gimnacios`, {
+      const response = await fetch(`${API_URL}/Gimnacios`, {
         headers: { Authorization: `Bearer ${token}`, Accept: "text/plain" },
       });
 

@@ -86,7 +86,7 @@ function GimnasioForm({ open, handleClose, handleSave, gimnasioData }) {
         return;
       }
 
-      const url = gimnasioData ? `${API_URL}/api/Gimnacios/${gimnasioData.id}` : `${API_URL}/api/Gimnacios`;
+      const url = gimnasioData ? `${API_URL}/Gimnacios/${gimnasioData.id}` : `${API_URL}/Gimnacios`;
       const method = gimnasioData ? "PUT" : "POST";
 
       const response = await fetch(url, {

@@ -21,7 +21,7 @@ function AsignarAdministrador({ open, handleClose, handleSave = () => {}, adminD
         const token = localStorage.getItem("token");
         if (!token) return;
 
-        const response = await fetch(`${API_URL}/api/Gimnacios`, {
+        const response = await fetch(`${API_URL}/Gimnacios`, {
           headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
         });
 

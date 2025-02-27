@@ -84,7 +84,7 @@ function AdministradorForm({ open, handleClose, handleSave, adminData }) {
 
     try {
       const token = localStorage.getItem("token");
-      const url = adminData ? `${API_URL}/api/Administradores/${adminData.id}` : `${API_URL}/api/Administradores/crear`;
+      const url = adminData ? `${API_URL}/api/Administradores/${adminData.id}` : `${API_URL}/Administradores/crear`;
       const method = adminData ? "PUT" : "POST";
 
       const response = await fetch(url, {

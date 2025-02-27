@@ -34,7 +34,7 @@ function Administradores() {
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/api/Administradores`, {
+      const response = await fetch(`${API_URL}/Administradores`, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       });
 
