@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import * as signalR from "@microsoft/signalr";
 import {
   Box,
   Typography,
@@ -11,111 +12,81 @@ import {
   TableCell,
   TableBody,
   Paper,
+  TextField,
+  Button
 } from "@mui/material";
-import { API_URL } from "../../services/api"; // Ajusta tu import
-import LoaderOverlay from "../../components/LoaderOverlay"; // Importa el componente LoaderOverlay
+import LoaderOverlay from "../../components/LoaderOverlay"; // Ajusta si tu proyecto lo usa
+
+// URL fija del Hub
+const HUB_URL = "https://localhost:7113/hubeventos";
 
 function HikvisionEvents() {
-  const [sseStatus, setSseStatus] = useState("Conectando SSE...");
-  const [latestEvent, setLatestEvent] = useState(null); // Evento actual en la tarjeta
-  const [historyEvents, setHistoryEvents] = useState([]); // Array de eventos (máx 30)
-  const [isLoading, setIsLoading] = useState(true); // Estado para la pantalla de carga
-
-  // Referencia para almacenar un posible timeout (si llega otro evento antes de 3s)
-  const timeoutRef = useRef(null);
+  const [connection, setConnection] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState("Conectando a SignalR...");
+  const [gymId, setGymId] = useState("1"); // Por defecto, Gimnasio 1
+  const [latestEvent, setLatestEvent] = useState(null); // Evento actual (tarjeta)
+  const [historyEvents, setHistoryEvents] = useState([]); // Historial (máx 30)
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const es = new EventSource(`${API_URL}/hikvision/events`);
+    // Crear conexión
+    const newConnection = new signalR.HubConnectionBuilder()
+      .withUrl(HUB_URL)
+      .withAutomaticReconnect()
+      .build();
 
-    es.onopen = () => {
-      setSseStatus("Conexión SSE establecida");
-      setTimeout(() => {
-        setIsLoading(false); // Ocultar pantalla de carga después de 3 segundos
-      }, 3000);
-    };
+    // Iniciar la conexión
+    newConnection.start()
+      .then(() => {
+        setConnectionStatus("Conexión establecida (pero sin unirse a un gimnasio)");
+        setConnection(newConnection);
+        // Quitar pantalla de carga tras 2s
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 2000);
+      })
+      .catch(err => {
+        console.error("Error al conectar SignalR:", err);
+        setConnectionStatus("Error al conectar (ver consola)");
+        setIsLoading(false);
+      });
 
-    es.onerror = (err) => {
-      console.error("Error SSE:", err);
-      setSseStatus("Error SSE (ver consola)");
-      setIsLoading(false); // Ocultar pantalla de carga en caso de error
-    };
+    // Escuchar ReceiveEvent
+    newConnection.on("ReceiveEvent", data => {
+      console.log("Evento Hikvision (SignalR):", data);
 
-    es.onmessage = (e) => {
-      try {
-        const parsed = JSON.parse(e.data);
+      // Actualizar la tarjeta
+      setLatestEvent(data);
 
-        if (parsed.error) {
-          console.error("Error SSE:", parsed);
-          setSseStatus(`Error SSE: ${parsed.detail || ""}`);
-          return;
-        }
-        if (parsed.info) {
-          setSseStatus(parsed.info);
-          return;
-        }
-        if (parsed.chunk) {
-          const eventObj = extraerJsonDelChunk(parsed.chunk);
-          if (!eventObj) return;
-
-          const alert = eventObj.EventNotificationAlert;
-          const ace = alert?.AccessControllerEvent;
-          if (!ace) return;
-
-          const empNo = ace.employeeNo || "N/A";
-          if (empNo === "N/A") return; // ignorar
-
-          // Cancelar timeout anterior, si existía
-          if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-          }
-
-          // Asignar este evento a la tarjeta
-          setLatestEvent(eventObj);
-
-          // Después de 3 segundos, moverlo al historial
-          timeoutRef.current = setTimeout(() => {
-            setHistoryEvents((prev) => {
-              const newArr = [eventObj, ...prev];
-              // Limitar a 30
-              if (newArr.length > 30) newArr.pop();
-              return newArr;
-            });
-            setLatestEvent(null); // limpiar la tarjeta
-          }, 3000);
-        }
-      } catch (ex) {
-        console.warn("No se pudo parsear SSE data:", ex);
-      }
-    };
+      // Agregar al principio del historial
+      setHistoryEvents(prev => {
+        const newArr = [data, ...prev];
+        if (newArr.length > 30) newArr.pop();
+        return newArr;
+      });
+    });
 
     return () => {
-      es.close();
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      newConnection.stop();
     };
   }, []);
 
-  function extraerJsonDelChunk(chunkStr) {
-    const sep = "\r\n\r\n";
-    const idx = chunkStr.indexOf(sep);
-    if (idx === -1) return null;
-
-    let rawJson = chunkStr.substring(idx + sep.length).trim();
-    rawJson = rawJson.replace(/\r?\n$/, "");
-
+  // Unirse a un grupo de gym
+  const handleJoinGymGroup = async () => {
+    if (!connection) return;
     try {
-      return JSON.parse(rawJson);
-    } catch {
-      return null;
+      await connection.invoke("JoinGymGroup", parseInt(gymId, 10));
+      setConnectionStatus(`Unido a Gym_${gymId}`);
+      console.log(`Unido al grupo Gym_${gymId}`);
+    } catch (err) {
+      console.error("Error al unirse:", err);
     }
-  }
+  };
 
-  // Función para formatear la fecha/hora: "dd/mm/yyyy" y "hh:mm:ss"
+  // Formatear fecha/hora
   function formatearFechaHora(isoString) {
-    if (!isoString) return { fecha: "(sin fecha)", hora: "" };
+    if (!isoString) return { fecha: "(sin fecha)", hora: "--:--:--" };
     const dateObj = new Date(isoString);
-
     const fecha = dateObj.toLocaleDateString("es-MX", {
       day: "2-digit",
       month: "2-digit",
@@ -130,102 +101,105 @@ function HikvisionEvents() {
   }
 
   return (
-    <Box sx={{ p: 3, display: "flex", flexDirection: "row" }}>
-      {isLoading && <LoaderOverlay />} {/* Mostrar LoaderOverlay si isLoading es true */}
+    <Box
+      sx={{
+        p: 3,
+        display: "flex",
+        flexDirection: "row",
+        backgroundColor: "#f7f7f7",
+        minHeight: "100vh"
+      }}
+    >
+      {isLoading && <LoaderOverlay />}
 
-      {/* Columna Izquierda: Tarjeta de Evento */}
+      {/* Columna Izquierda */}
       <Box sx={{ flex: 1, mr: 2 }}>
         <Typography variant="h4" color="primary" gutterBottom>
-          Eventos Hikvision
+          Eventos Hikvision (SignalR)
         </Typography>
-        <Typography variant="body2" sx={{ mb: 2 }}>
-          Estado SSE: {sseStatus}
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+          Estado: {connectionStatus}
         </Typography>
 
-        <Card sx={{ width: "100%", mb: 4 }}>
+        {/* Seleccionar gymId */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+          <TextField
+            label="Gym ID"
+            variant="outlined"
+            size="small"
+            value={gymId}
+            onChange={(e) => setGymId(e.target.value)}
+            sx={{ width: 100 }}
+          />
+          <Button variant="contained" onClick={handleJoinGymGroup}>
+            Unirse
+          </Button>
+        </Box>
+
+        <Card
+          sx={{
+            width: "100%",
+            minHeight: 250,
+            backgroundColor: "white",
+            borderRadius: 2,
+            boxShadow: 4,
+            mb: 4,
+          }}
+        >
+          {/* Tarjeta del último evento */}
           {latestEvent ? (
-            <TarjetaEvento
-              evento={latestEvent}
-              formatearFechaHora={formatearFechaHora}
-            />
+            <TarjetaEvento data={latestEvent} formatearFechaHora={formatearFechaHora} />
           ) : (
             <CardContent
               sx={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                height: 150,
+                height: "100%"
               }}
             >
-              <Typography variant="body1" color="text.secondary">
-                No hay evento en curso
+              <Typography variant="h6" color="text.secondary">
+                Esperando evento...
               </Typography>
             </CardContent>
           )}
         </Card>
       </Box>
 
-      {/* Columna Derecha: Historial de Eventos */}
+      {/* Columna Derecha: Historial */}
       <Box sx={{ flex: 2 }}>
         {historyEvents.length > 0 && (
-          <Paper sx={{ p: 2 }}>
+          <Paper sx={{ p: 2, boxShadow: 3 }}>
             <Typography variant="h5" gutterBottom>
-              Historial de Eventos (máx 30)
+              Historial (máx 30)
             </Typography>
             <Table>
               <TableHead>
-                <TableRow>
-                  <TableCell>Fecha</TableCell>
-                  <TableCell>Hora</TableCell>
-                  <TableCell>Empleado</TableCell>
-                  <TableCell>Puerta</TableCell>
-                  <TableCell>Máscara</TableCell>
-                  <TableCell>Foto</TableCell>
+                <TableRow sx={{ backgroundColor: "primary.main" }}>
+                  <TableCell sx={{ color: "white" }}>Fecha</TableCell>
+                  <TableCell sx={{ color: "white" }}>Hora</TableCell>
+                  <TableCell sx={{ color: "white" }}>Nombre</TableCell>
+                  <TableCell sx={{ color: "white" }}>Puerta</TableCell>
+                  <TableCell sx={{ color: "white" }}>Máscara</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {historyEvents.map((evt, idx) => {
-                  const alert = evt.EventNotificationAlert;
-                  const ace = alert.AccessControllerEvent;
-                  const { fecha, hora } = formatearFechaHora(alert.dateTime);
-                  const empNo = ace.employeeNo;
-                  const doorNo = ace.doorNo || "?";
-                  const mask = ace.mask || "desconocido";
-                  const pictureURL = ace.pictureURL
-                    ? `${API_URL}/hikvision/pic-proxy?path=${encodeURIComponent(
-                        ace.pictureURL
-                      )}`
-                    : null;
+                {historyEvents.map((ev, idx) => {
+                  const { event, profile } = ev;
+                  const fechaObj = formatearFechaHora(event?.eventDate);
+                  const name = profile
+                    ? `${profile.firstName} ${profile.lastName}`
+                    : "Desconocido";
+                  const doorNo = event?.doorNumber || "?";
+                  const mask = event?.maskStatus || "desconocido";
 
                   return (
                     <TableRow key={idx}>
-                      <TableCell>{fecha}</TableCell>
-                      <TableCell>{hora}</TableCell>
-                      <TableCell>{empNo}</TableCell>
+                      <TableCell>{fechaObj.fecha}</TableCell>
+                      <TableCell>{fechaObj.hora}</TableCell>
+                      <TableCell>{name}</TableCell>
                       <TableCell>{doorNo}</TableCell>
                       <TableCell>{mask}</TableCell>
-                      <TableCell>
-                        {pictureURL && (
-                          <Box
-                            sx={{
-                              width: 60,
-                              height: 60,
-                              overflow: "hidden",
-                              borderRadius: "4px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              backgroundColor: "#f0f0f0",
-                            }}
-                          >
-                            <img
-                              src={pictureURL}
-                              alt="Foto Acceso"
-                              style={{ width: "100%", height: "auto" }}
-                            />
-                          </Box>
-                        )}
-                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -238,30 +212,29 @@ function HikvisionEvents() {
   );
 }
 
-// Componente que muestra la info del evento
-function TarjetaEvento({ evento, formatearFechaHora }) {
-  const alert = evento.EventNotificationAlert;
-  const ace = alert.AccessControllerEvent;
-  const { fecha, hora } = formatearFechaHora(alert.dateTime);
-  const empNo = ace.employeeNo;
-  const doorNo = ace.doorNo || "?";
-  const mask = ace.mask || "desconocido";
-  const pictureURL = ace.pictureURL
-    ? `${API_URL}/hikvision/pic-proxy?path=${encodeURIComponent(ace.pictureURL)}`
-    : null;
+// TarjetaEvento con foto (mapping.hikvisionPhotoUrl)
+function TarjetaEvento({ data, formatearFechaHora }) {
+  const { event, mapping, profile } = data;
+  const fechaObj = formatearFechaHora(event?.eventDate);
+  const doorNo = event?.doorNumber || "?";
+  const mask = event?.maskStatus || "desconocido";
+
+  // Nombre
+  const fullName = profile
+    ? `${profile.firstName} ${profile.lastName}`
+    : "Sin nombre";
+
+  // Foto
+  const foto = mapping?.hikvisionPhotoUrl;
 
   return (
     <Box sx={{ display: "flex" }}>
-      {/* Info a la izquierda */}
       <CardContent sx={{ flex: "1 1 auto" }}>
         <Typography variant="h6" gutterBottom>
-          {fecha}
+          {fechaObj.fecha} - {fechaObj.hora}
         </Typography>
         <Typography variant="body1" gutterBottom>
-          {hora}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Empleado:</strong> {empNo}
+          <strong>Empleado:</strong> {fullName}
         </Typography>
         <Typography variant="body1">
           <strong>Puerta:</strong> {doorNo}
@@ -271,24 +244,24 @@ function TarjetaEvento({ evento, formatearFechaHora }) {
         </Typography>
       </CardContent>
 
-      {/* Foto a la derecha */}
-      {pictureURL && (
+      {foto && (
         <Box
           sx={{
             width: 180,
             height: 180,
             overflow: "hidden",
-            borderRadius: "4px",
+            borderRadius: "8px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "#f0f0f0",
+            backgroundColor: "#ececec",
+            m: 2,
           }}
         >
           <CardMedia
             component="img"
             sx={{ width: "100%", height: "auto" }}
-            image={pictureURL}
+            image={foto}
             alt="Foto Acceso"
           />
         </Box>
